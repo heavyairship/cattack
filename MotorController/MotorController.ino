@@ -2,7 +2,7 @@
 // Final Project
 //
 // Moves two motors with serial input.
-// 1 -> ON.
+// 0 -> ON.
 // anything else -> OFF.
 
 
@@ -15,8 +15,8 @@
 struct MotorConfig {
   int stepPin, dirPin, dir;
 };
-const MotorConfig motorConfig1={.stepPin=5, .dirPin=4, .dir=HIGH};
-const MotorConfig motorConfig2={.stepPin=6, .dirPin=7, .dir=HIGH};
+const MotorConfig motorConfig1={.stepPin=5, .dirPin=4, .dir=LOW};
+const MotorConfig motorConfig2={.stepPin=0, .dirPin=2, .dir=HIGH};
 
 // Motor delays for the ON mode.
 const int delayMicroLow=100;
@@ -57,8 +57,8 @@ void turnOff(MotorConfig mc) {
 void setup() {
   pinMode(motorConfig1.stepPin,OUTPUT);
   pinMode(motorConfig1.dirPin,OUTPUT);
-  pinMode(motorConfig1.stepPin,OUTPUT);
-  pinMode(motorConfig1.dirPin,OUTPUT);
+  pinMode(motorConfig2.stepPin,OUTPUT);
+  pinMode(motorConfig2.dirPin,OUTPUT);
   Serial.begin(9600);
 }
 
