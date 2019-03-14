@@ -2,7 +2,7 @@
 // Final Project
 //
 // Moves two motors with serial input.
-// 1 -> ON.
+// 0 -> ON.
 // anything else -> OFF.
 
 
@@ -19,7 +19,7 @@ const MotorConfig motorConfig1={.stepPin=5, .dirPin=4, .dir=HIGH};
 const MotorConfig motorConfig2={.stepPin=6, .dirPin=7, .dir=HIGH};
 
 // Motor delays for the ON mode.
-const int delayMicroLow=100;
+const int delayMicroLow=50;
 const int delayMicroHigh=1000;
 
 
