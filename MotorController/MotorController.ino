@@ -10,7 +10,8 @@
 // Configs 
 ////////////////////////////////////////
 
-// Motor configs.
+// Motor configs. To run motors in opposite directions,
+// change the .dir attribute to LOW on one of them.
 struct MotorConfig {
   int stepPin, dirPin, dir;
 };
@@ -76,6 +77,7 @@ void loop() {
     for(int i=0; i<200; i++) {
       spin(motorConfig1);
       spin(motorConfig2);
+      yield();
     }
   } else {
     // Turn motors off.
