@@ -72,16 +72,21 @@ void loop() {
     motorState = (MotorState)Serial.parseInt();
     Serial.read();
   }
-  if(motorState==ON) {
-    // Spin motors.
-    for(int i=0; i<200; i++) {
-      spin(motorConfig1);
-      spin(motorConfig2);
-      yield();
-    }
-  } else {
-    // Turn motors off.
-    turnOff(motorConfig1);
-    turnOff(motorConfig2);
+  switch(motorState) {
+    case ON: 
+      // Spin motors.
+      for(int i=0; i<200; i++) {
+        spin(motorConfig1);
+        spin(motorConfig2);
+        yield();
+      }
+      break;
+    case OFF:
+      // Turn motors off.
+      turnOff(motorConfig1);
+      turnOff(motorConfig2);
+      break;
+    default: 
+      Serial.write("Error: unhandled case");
   }
 }
