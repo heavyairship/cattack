@@ -1,54 +1,76 @@
 // CMSC838J, Spring 2019
 // Final Project
 //
-// Moves two motors with serial input.
-// 1 -> ON.
-// anything else -> OFF.
-
+// High-level description of behavior:
+// 'l\n' -> both motors turn left for 1 second, pause for 1 second, turn right for 1 second, then clear input buffer
+// 'r\n' -> both motors turn right for 1 second, pause for 1 second, turn left for 1 second, then clear input buffer
+//  _    -> No-op.
 
 ////////////////////////////////////////
-// Configs 
+// Configs/constants
 ////////////////////////////////////////
 
-// Motor configs. To run motors in opposite directions,
-// change the .dir attribute to LOW on one of them.
+// Motor configs.
 struct MotorConfig {
-  int stepPin, dirPin, dir;
+  unsigned int stepPin, dirPin;
 };
-const MotorConfig motorConfig1={.stepPin=5, .dirPin=4, .dir=HIGH};
-const MotorConfig motorConfig2={.stepPin=6, .dirPin=7, .dir=HIGH};
+const MotorConfig motorConfig1={.stepPin=5, .dirPin=4};
+const MotorConfig motorConfig2={.stepPin=0, .dirPin=2};
 
 // Motor delays for the ON mode.
-const int delayMicroLow=100;
-const int delayMicroHigh=1000;
+const unsigned int DELAY_MICRO_LOW=100;
+const unsigned int DELAY_MICRO_HIGH=1000;
 
+// Directions
+const unsigned int LEFT = 0;
+const unsigned int RIGHT = 0;
+
+// Time to spin in a given direction
+const unsigned int SPIN_TIME_MICRO = 1e6;
+const unsigned int PAUSE_TIME_MICRO = 1e6/2;
 
 ////////////////////////////////////////
-// State
+// Util functions
 ////////////////////////////////////////
 
-// Current state of motors.
-enum MotorState {ON, OFF};
-MotorState motorState=OFF;
-
+void clearInputBuffer() {
+  while(Serial.available()) {
+    Serial.read();
+    // FixMe: maybe yield every so often, if this becomes an issue.
+  }
+}
 
 ////////////////////////////////////////
 // Motor functions
 ////////////////////////////////////////
 
-void spin(MotorConfig mc) {
-  // Spins motor using given configuration.
-  digitalWrite(mc.dirPin,mc.dir);
-  digitalWrite(mc.stepPin,HIGH);
-  delayMicroseconds(delayMicroHigh);
-  digitalWrite(mc.stepPin,LOW);
-  delayMicroseconds(delayMicroLow);
+void turnOffBoth() {
+  digitalWrite(motorConfig1.stepPin,LOW);
+  digitalWrite(motorConfig2.stepPin,LOW);
 }
 
-void turnOff(MotorConfig mc) {
-  digitalWrite(mc.stepPin,LOW);
-}
+void spinBoth(unsigned int dir) {
+  // Spins both motors in given direction.
+  const int numIter = SPIN_TIME_MICRO/(DELAY_MICRO_LOW+DELAY_MICRO_HIGH);
+  for(int i=0; i<numIter; i++) {
+    // Set direction.
+    digitalWrite(motorConfig1.dirPin,dir);
+    digitalWrite(motorConfig2.dirPin,dir);
 
+    // Run motors
+    digitalWrite(motorConfig1.stepPin,HIGH);
+    digitalWrite(motorConfig2.stepPin,HIGH);
+    delayMicroseconds(DELAY_MICRO_HIGH);
+
+    // Rest motors
+    digitalWrite(motorConfig1.stepPin,LOW);
+    digitalWrite(motorConfig2.stepPin,LOW);
+    delayMicroseconds(DELAY_MICRO_LOW);
+
+    // Let background activities run.
+    yield();
+  }
+}
 
 ////////////////////////////////////////
 // Initialization
@@ -57,8 +79,8 @@ void turnOff(MotorConfig mc) {
 void setup() {
   pinMode(motorConfig1.stepPin,OUTPUT);
   pinMode(motorConfig1.dirPin,OUTPUT);
-  pinMode(motorConfig1.stepPin,OUTPUT);
-  pinMode(motorConfig1.dirPin,OUTPUT);
+  pinMode(motorConfig2.stepPin,OUTPUT);
+  pinMode(motorConfig2.dirPin,OUTPUT);
   Serial.begin(9600);
 }
 
@@ -67,26 +89,35 @@ void setup() {
 ////////////////////////////////////////
 
 void loop() {
+  if(Serial.available()<2){  
+    // Nothing to do.
+    return;
+  }
+
   // Read input.
-  if(Serial.available()>0){  
-    motorState = (MotorState)Serial.parseInt();
-    Serial.read();
-  }
-  switch(motorState) {
-    case ON: 
-      // Spin motors.
-      for(int i=0; i<200; i++) {
-        spin(motorConfig1);
-        spin(motorConfig2);
-        yield();
-      }
-      break;
-    case OFF:
-      // Turn motors off.
-      turnOff(motorConfig1);
-      turnOff(motorConfig2);
-      break;
-    default: 
-      Serial.write("Error: unhandled case");
-  }
+  const byte cmd = Serial.read();
+  const byte newline = Serial.read();
+  if(!((cmd=='l' || cmd=='r') && newline=='\n')) {
+    Serial.write('Error: invalid input\n');
+    return;
+  } 
+
+  // Determine initial direction.
+  const unsigned int dir = cmd=='l' ? LEFT : RIGHT;
+
+  // Spin initial direction
+  spinBoth(dir);
+  turnOffBoth();
+
+  // Delay.
+  delayMicroseconds(PAUSE_TIME_MICRO);
+
+  // Spin opposite initial direction.
+  spinBoth(!dir);
+  turnOffBoth();
+
+  // Clear buffer, since we don't want to queue up commands.
+  // Rather, we want to respond in real time to one action
+  // at a time.
+  clearInputBuffer();
 }
