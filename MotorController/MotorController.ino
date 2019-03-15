@@ -23,7 +23,7 @@ const unsigned int DELAY_MICRO_HIGH=1000;
 
 // Directions
 const unsigned int LEFT = 0;
-const unsigned int RIGHT = 0;
+const unsigned int RIGHT = 1;
 
 // Time to spin in a given direction
 const unsigned int SPIN_TIME_MICRO = 1e6;
