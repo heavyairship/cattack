@@ -60,12 +60,12 @@ void spinBoth(unsigned int dir) {
     digitalWrite(motorConfig1.dirPin,dir);
     digitalWrite(motorConfig2.dirPin,dir);
 
-    // Run motors
+    // Run motors.
     digitalWrite(motorConfig1.stepPin,HIGH);
     digitalWrite(motorConfig2.stepPin,HIGH);
     delayMicroseconds(DELAY_MICRO_HIGH);
 
-    // Rest motors
+    // Rest motors.
     digitalWrite(motorConfig1.stepPin,LOW);
     digitalWrite(motorConfig2.stepPin,LOW);
     delayMicroseconds(DELAY_MICRO_LOW);
@@ -108,7 +108,7 @@ void loop() {
   // Determine initial direction.
   const unsigned int dir = cmd=='l' ? LEFT : RIGHT;
 
-  // Spin initial direction
+  // Spin initial direction.
   spinBoth(dir);
   turnOffBoth();
 
