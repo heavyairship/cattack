@@ -1,5 +1,6 @@
 // CMSC838J, Spring 2019
 // Final Project
+// Members: Debjani Saha, Andrew Fichman
 //
 // High-level description of behavior:
 // 'l\n' -> both motors turn left for 1 second, pause for 1 second, turn right for 1 second, then clear input buffer
@@ -21,12 +22,14 @@ const MotorConfig motorConfig2={.stepPin=0, .dirPin=2};
 const unsigned int DELAY_MICRO_LOW=100;
 const unsigned int DELAY_MICRO_HIGH=1000;
 
-// Directions
+// Directions.
 const unsigned int LEFT = 0;
 const unsigned int RIGHT = 1;
 
-// Time to spin in a given direction
+// Time to spin in a given direction.
 const unsigned int SPIN_TIME_MICRO = 1e6;
+
+// Time to pause during a change in direction.
 const unsigned int PAUSE_TIME_MICRO = 1e6/2;
 
 ////////////////////////////////////////
