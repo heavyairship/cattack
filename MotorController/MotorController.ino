@@ -3,8 +3,8 @@
 // Members: Debjani Saha, Andrew Fichman
 //
 // High-level description of behavior:
-// 'l\n' -> both motors turn left for 1 second, pause for 1 second, turn right for 1 second, then clear input buffer
-// 'r\n' -> both motors turn right for 1 second, pause for 1 second, turn left for 1 second, then clear input buffer
+// 'r\n' -> right motor turns, pauses, turns opposite direction
+// 'l\n' -> left motor turns, pauses, turns opposite direction
 //  _    -> No-op.
 
 ////////////////////////////////////////
@@ -15,11 +15,11 @@
 struct MotorConfig {
   unsigned int stepPin, dirPin;
 };
-const MotorConfig motorConfig1={.stepPin=5, .dirPin=4};
-const MotorConfig motorConfig2={.stepPin=0, .dirPin=2};
+const MotorConfig rConfig={.stepPin=5, .dirPin=4}; // RIGHT
+const MotorConfig lConfig={.stepPin=0, .dirPin=2}; // LEFT
 
-// Motor delays for the ON mode.
-const unsigned int DELAY_MICRO_LOW=100;
+// Motor delays for the OFF/ON modes.
+const unsigned int DELAY_MICRO_LOW=1000;
 const unsigned int DELAY_MICRO_HIGH=1000;
 
 // Directions.
@@ -27,10 +27,10 @@ const unsigned int LEFT = 0;
 const unsigned int RIGHT = 1;
 
 // Time to spin in a given direction.
-const unsigned int SPIN_TIME_MICRO = 1e6;
+const unsigned int SPIN_TIME_MICRO = 1e6/4;
 
 // Time to pause during a change in direction.
-const unsigned int PAUSE_TIME_MICRO = 1e6/2;
+const unsigned int PAUSE_TIME_MICRO = 1e6/4;
 
 ////////////////////////////////////////
 // Util functions
@@ -47,27 +47,22 @@ void clearInputBuffer() {
 // Motor functions
 ////////////////////////////////////////
 
-void turnOffBoth() {
-  digitalWrite(motorConfig1.stepPin,LOW);
-  digitalWrite(motorConfig2.stepPin,LOW);
+void turnOff(MotorConfig mc) {
+  digitalWrite(mc.stepPin,LOW);
 }
 
-void spinBoth(unsigned int dir) {
-  // Spins both motors in given direction.
-  const int numIter = SPIN_TIME_MICRO/(DELAY_MICRO_LOW+DELAY_MICRO_HIGH);
+void spin(MotorConfig mc, unsigned int dir) {
+  const int numIter = SPIN_TIME_MICRO/(DELAY_MICRO_LOW+DELAY_MICRO_HIGH); 
   for(int i=0; i<numIter; i++) {
     // Set direction.
-    digitalWrite(motorConfig1.dirPin,dir);
-    digitalWrite(motorConfig2.dirPin,dir);
+    digitalWrite(mc.dirPin,dir);
 
-    // Run motors
-    digitalWrite(motorConfig1.stepPin,HIGH);
-    digitalWrite(motorConfig2.stepPin,HIGH);
+    // Run motor.
+    digitalWrite(mc.stepPin,HIGH);
     delayMicroseconds(DELAY_MICRO_HIGH);
 
-    // Rest motors
-    digitalWrite(motorConfig1.stepPin,LOW);
-    digitalWrite(motorConfig2.stepPin,LOW);
+    // Rest motor.
+    digitalWrite(mc.stepPin,LOW);
     delayMicroseconds(DELAY_MICRO_LOW);
 
     // Let background activities run.
@@ -80,10 +75,10 @@ void spinBoth(unsigned int dir) {
 ////////////////////////////////////////
 
 void setup() {
-  pinMode(motorConfig1.stepPin,OUTPUT);
-  pinMode(motorConfig1.dirPin,OUTPUT);
-  pinMode(motorConfig2.stepPin,OUTPUT);
-  pinMode(motorConfig2.dirPin,OUTPUT);
+  pinMode(rConfig.stepPin,OUTPUT);
+  pinMode(rConfig.dirPin,OUTPUT);
+  pinMode(lConfig.stepPin,OUTPUT);
+  pinMode(lConfig.dirPin,OUTPUT);
   Serial.begin(9600);
 }
 
@@ -107,17 +102,18 @@ void loop() {
 
   // Determine initial direction.
   const unsigned int dir = cmd=='l' ? LEFT : RIGHT;
+  const MotorConfig mc = cmd=='l' ? lConfig : rConfig;
 
-  // Spin initial direction
-  spinBoth(dir);
-  turnOffBoth();
+  // Spin initial direction.
+  spin(mc,dir);
+  turnOff(mc);
 
   // Delay.
   delayMicroseconds(PAUSE_TIME_MICRO);
 
   // Spin opposite initial direction.
-  spinBoth(!dir);
-  turnOffBoth();
+  spin(mc,!dir);
+  turnOff(mc);
 
   // Clear buffer, since we don't want to queue up commands.
   // Rather, we want to respond in real time to one action
