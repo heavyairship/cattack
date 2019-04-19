@@ -3,9 +3,8 @@
 // Members: Debjani Saha, Andrew Fichman
 //
 // High-level description of behavior:
-// 'r\n' -> right motor turns, pauses, turns opposite direction
-// 'l\n' -> left motor turns, pauses, turns opposite direction
-//  _    -> No-op.
+// left photometer detects motion -> right motor turns, pauses, turns opposite direction
+// right photometer detects motion -> left motor turns, pauses, turns opposite direction
 
 ////////////////////////////////////////
 // Configs/constants
@@ -15,8 +14,9 @@
 struct MotorConfig {
   unsigned int stepPin, dirPin;
 };
-const MotorConfig rConfig={.stepPin=5, .dirPin=4}; // RIGHT
-const MotorConfig lConfig={.stepPin=0, .dirPin=2}; // LEFT
+const MotorConfig rConfig={.stepPin=D1, .dirPin=D2}; // RIGHT
+const MotorConfig lConfig={.stepPin=D3, .dirPin=D4}; // LEFT
+const unsigned int photo = A0;
 
 // Motor delays for the OFF/ON modes.
 const unsigned int DELAY_MICRO_LOW=1000;
@@ -32,15 +32,45 @@ const unsigned int SPIN_TIME_MICRO = 1e6/4;
 // Time to pause during a change in direction.
 const unsigned int PAUSE_TIME_MICRO = 1e6/4;
 
+// Number of test iterations used to compute photo baseline.
+const unsigned int PHOTO_BASELINE_ITER_MAX = 20;
+
+// Fraction of photo baseline to use as threshold.
+const float THRESHOLD_FACTOR = 0.05;
+
 ////////////////////////////////////////
-// Util functions
+// Photo state
 ////////////////////////////////////////
 
-void clearInputBuffer() {
-  while(Serial.available()) {
-    Serial.read();
-    // FixMe: maybe yield every so often, if this becomes an issue.
+unsigned int photoBaseline = 0;
+unsigned int photoBaselineIter = 0;
+bool photoBaselineSet = false;
+
+////////////////////////////////////////
+// Photo functions
+////////////////////////////////////////
+
+void updatePhotoBaseline(unsigned int photoIntensity) {
+  if(photoBaselineSet) {
+    return;
   }
+  photoBaseline += photoIntensity;
+  ++photoBaselineIter;
+  if(photoBaselineIter==PHOTO_BASELINE_ITER_MAX) {
+    photoBaseline = photoBaseline/photoBaselineIter;
+    Serial.print("photo baseline set to: ");
+    Serial.print(photoBaseline);
+    Serial.println();
+    photoBaselineSet = true;
+    photoBaselineIter = 0;
+  }   
+
+  // Spread out the samples over time.
+  delay(100);
+}
+
+bool motionOccurred(unsigned int photoIntensity) {
+  return abs(photoIntensity-photoBaseline)>THRESHOLD_FACTOR*photoBaseline;
 }
 
 ////////////////////////////////////////
@@ -75,11 +105,11 @@ void spin(MotorConfig mc, unsigned int dir) {
 ////////////////////////////////////////
 
 void setup() {
+  Serial.begin(9600);
   pinMode(rConfig.stepPin,OUTPUT);
   pinMode(rConfig.dirPin,OUTPUT);
   pinMode(lConfig.stepPin,OUTPUT);
   pinMode(lConfig.dirPin,OUTPUT);
-  Serial.begin(9600);
 }
 
 ////////////////////////////////////////
@@ -87,22 +117,27 @@ void setup() {
 ////////////////////////////////////////
 
 void loop() {
-  if(Serial.available()<2){  
-    // Nothing to do.
+  // Read current photo value
+  const unsigned int photoIntensity = analogRead(photo);
+  
+  // Update baseline
+  updatePhotoBaseline(photoIntensity);
+  if(!photoBaselineSet) {
     return;
   }
 
-  // Read input.
-  const byte cmd = Serial.read();
-  const byte newline = Serial.read();
-  if(!((cmd=='l' || cmd=='r') && newline=='\n')) {
-    Serial.write('Error: invalid input\n');
+  // Determine if motion occurred
+  const bool motion = motionOccurred(photoIntensity);
+  if(!motion) {
     return;
-  } 
+  } else {
+    Serial.print("Motion detected!\n");
+  }
 
   // Determine initial direction.
-  const unsigned int dir = cmd=='l' ? LEFT : RIGHT;
-  const MotorConfig mc = cmd=='l' ? lConfig : rConfig;
+  // FixMe: hardcoded to RIGHT for now
+  const unsigned int dir = RIGHT;
+  const MotorConfig mc = rConfig;
 
   // Spin initial direction.
   spin(mc,dir);
@@ -114,9 +149,4 @@ void loop() {
   // Spin opposite initial direction.
   spin(mc,!dir);
   turnOff(mc);
-
-  // Clear buffer, since we don't want to queue up commands.
-  // Rather, we want to respond in real time to one action
-  // at a time.
-  clearInputBuffer();
 }
