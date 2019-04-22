@@ -5,6 +5,11 @@
 // High-level description of behavior:
 // left photometer detects motion -> right motor turns, pauses, turns opposite direction
 // right photometer detects motion -> left motor turns, pauses, turns opposite direction
+//
+// BUGS:
+// 1. Why does left motor move variably?
+// 2. Need rolling baseline detection
+// 3. Double triggering -- bug or not?
 
 ////////////////////////////////////////
 // Configs/constants
@@ -14,9 +19,8 @@
 struct MotorConfig {
   unsigned int stepPin, dirPin;
 };
-const MotorConfig rConfig={.stepPin=D1, .dirPin=D2}; // RIGHT
-const MotorConfig lConfig={.stepPin=D3, .dirPin=D4}; // LEFT
-const unsigned int photo = A0;
+const MotorConfig RCONFIG={.stepPin=D1, .dirPin=D2}; // RIGHT
+const MotorConfig LCONFIG={.stepPin=D3, .dirPin=D4}; // LEFT
 
 // Motor delays for the OFF/ON modes.
 const unsigned int DELAY_MICRO_LOW=1000;
@@ -32,17 +36,39 @@ const unsigned int SPIN_TIME_MICRO = 1e6/4;
 // Time to pause during a change in direction.
 const unsigned int PAUSE_TIME_MICRO = 1e6/4;
 
+// Input photo analog pin
+const unsigned int PHOTO = A0;
+
 // Number of test iterations used to compute photo baseline.
 const unsigned int PHOTO_BASELINE_ITER_MAX = 20;
 
 // Fraction of photo baseline to use as threshold.
-const float THRESHOLD_FACTOR = 0.05;
+const float THRESHOLD_FACTOR = 0.10;
+
+// Multiplexer constants
+const unsigned int MUX_A = D8;
+const unsigned int MUX_B = D7;
+const unsigned int MUX_C = D6;
+
+// Led constants
+const unsigned int LED = D5;
+
+////////////////////////////////////////
+// Utility functions
+////////////////////////////////////////
+
+void changeMux(int c, int b, int a) {
+  digitalWrite(MUX_A, a);
+  digitalWrite(MUX_B, b);
+  digitalWrite(MUX_C, c);
+}
 
 ////////////////////////////////////////
 // Photo state
 ////////////////////////////////////////
 
-unsigned int photoBaseline = 0;
+int lPhotoBaseline = 0;
+int rPhotoBaseline = 0;
 unsigned int photoBaselineIter = 0;
 bool photoBaselineSet = false;
 
@@ -50,16 +76,29 @@ bool photoBaselineSet = false;
 // Photo functions
 ////////////////////////////////////////
 
-void updatePhotoBaseline(unsigned int photoIntensity) {
+void selectPhotoInput(unsigned int side) {
+  if(side == LEFT) {
+    changeMux(LOW, LOW, LOW);
+  } else {
+    changeMux(LOW, LOW, HIGH);
+  }
+}
+
+void updatePhotoBaseline(unsigned int lPhotoIntensity, unsigned int rPhotoIntensity) {
   if(photoBaselineSet) {
     return;
   }
-  photoBaseline += photoIntensity;
+  lPhotoBaseline += lPhotoIntensity;
+  rPhotoBaseline += rPhotoIntensity;
   ++photoBaselineIter;
   if(photoBaselineIter==PHOTO_BASELINE_ITER_MAX) {
-    photoBaseline = photoBaseline/photoBaselineIter;
-    Serial.print("photo baseline set to: ");
-    Serial.print(photoBaseline);
+    lPhotoBaseline = lPhotoBaseline/photoBaselineIter;
+    rPhotoBaseline = rPhotoBaseline/photoBaselineIter;
+    Serial.print("left photo baseline set to: ");
+    Serial.print(lPhotoBaseline);
+    Serial.println();
+    Serial.print("right photo baseline set to: ");
+    Serial.print(rPhotoBaseline);
     Serial.println();
     photoBaselineSet = true;
     photoBaselineIter = 0;
@@ -67,10 +106,6 @@ void updatePhotoBaseline(unsigned int photoIntensity) {
 
   // Spread out the samples over time.
   delay(100);
-}
-
-bool motionOccurred(unsigned int photoIntensity) {
-  return abs(photoIntensity-photoBaseline)>THRESHOLD_FACTOR*photoBaseline;
 }
 
 ////////////////////////////////////////
@@ -106,10 +141,15 @@ void spin(MotorConfig mc, unsigned int dir) {
 
 void setup() {
   Serial.begin(9600);
-  pinMode(rConfig.stepPin,OUTPUT);
-  pinMode(rConfig.dirPin,OUTPUT);
-  pinMode(lConfig.stepPin,OUTPUT);
-  pinMode(lConfig.dirPin,OUTPUT);
+  delay(1000); // Prevents omission of early messages from output console.
+  pinMode(RCONFIG.stepPin,OUTPUT);
+  pinMode(RCONFIG.dirPin,OUTPUT);
+  pinMode(LCONFIG.stepPin,OUTPUT);
+  pinMode(LCONFIG.dirPin,OUTPUT);
+  pinMode(MUX_A,OUTPUT);
+  pinMode(MUX_B,OUTPUT);
+  pinMode(MUX_C,OUTPUT);
+  pinMode(LED,OUTPUT);
 }
 
 ////////////////////////////////////////
@@ -117,28 +157,46 @@ void setup() {
 ////////////////////////////////////////
 
 void loop() {
-  // Read current photo value
-  const unsigned int photoIntensity = analogRead(photo);
+
+  // Read current photo values
+  selectPhotoInput(LEFT);
+  const int lPhotoIntensity = analogRead(PHOTO);
+  selectPhotoInput(RIGHT);
+  const int rPhotoIntensity = analogRead(PHOTO);  
   
   // Update baseline
-  updatePhotoBaseline(photoIntensity);
+  updatePhotoBaseline(lPhotoIntensity, rPhotoIntensity);
   if(!photoBaselineSet) {
     return;
   }
-
-  // Determine if motion occurred
-  const bool motion = motionOccurred(photoIntensity);
-  if(!motion) {
-    return;
+  // Determine if there was motion and, if so, which direction to move
+  // in response.
+  const float lPhotoChange = abs(lPhotoIntensity-lPhotoBaseline)/(float)lPhotoBaseline;
+  const float rPhotoChange = abs(rPhotoIntensity-rPhotoBaseline)/(float)rPhotoBaseline;
+  unsigned int dir;
+  MotorConfig mc;
+  if(lPhotoChange>THRESHOLD_FACTOR && !(rPhotoChange>THRESHOLD_FACTOR)) {
+    // Motion on left only -> move direction right
+    dir = RIGHT;
+    mc = RCONFIG;
+  } else if(rPhotoChange>THRESHOLD_FACTOR && !(lPhotoChange>THRESHOLD_FACTOR)) {
+    // Motion on right only -> move direction left
+    dir = LEFT;
+    mc = LCONFIG;
+  } else if(rPhotoChange>THRESHOLD_FACTOR && lPhotoChange>THRESHOLD_FACTOR) {
+    // Motion on both left and right, choose opposite direction of greatest change
+    dir = rPhotoChange > lPhotoChange ? LEFT : RIGHT;
+    mc = rPhotoChange > lPhotoChange ? LCONFIG : RCONFIG;
   } else {
-    Serial.print("Motion detected!\n");
+    // No motion detected
+    return;
   }
-
-  // Determine initial direction.
-  // FixMe: hardcoded to RIGHT for now
-  const unsigned int dir = RIGHT;
-  const MotorConfig mc = rConfig;
-
+  if(dir == LEFT) {
+    Serial.print("Motion detected on right, moving left!\n");
+  } else {
+    Serial.print("Motion detected on left, moving right!\n");
+  }
+  
   // Spin initial direction.
   spin(mc,dir);
   turnOff(mc);
