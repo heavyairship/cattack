@@ -168,7 +168,8 @@ void setup() {
 void loop() {
   // Blink LED
   if((millis()-ledStartTime)>LED_TIMEOUT) {
-    digitalWrite(LED,!ledState);
+    ledState = !ledState;
+    digitalWrite(LED,ledState);
     ledStartTime = millis();
   }  
 
