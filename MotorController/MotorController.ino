@@ -52,6 +52,7 @@ const unsigned int MUX_C = D6;
 
 // Led constants
 const unsigned int LED = D5;
+const unsigned int LED_TIMEOUT = 500;
 
 ////////////////////////////////////////
 // Utility functions
@@ -71,6 +72,13 @@ int lPhotoBaseline = 0;
 int rPhotoBaseline = 0;
 unsigned int photoBaselineIter = 0;
 bool photoBaselineSet = false;
+
+////////////////////////////////////////
+// LED state
+////////////////////////////////////////
+
+unsigned int ledState = LOW;
+unsigned int ledStartTime = 0;
 
 ////////////////////////////////////////
 // Photo functions
@@ -150,6 +158,7 @@ void setup() {
   pinMode(MUX_B,OUTPUT);
   pinMode(MUX_C,OUTPUT);
   pinMode(LED,OUTPUT);
+  ledStartTime = millis();
 }
 
 ////////////////////////////////////////
@@ -157,6 +166,11 @@ void setup() {
 ////////////////////////////////////////
 
 void loop() {
+  // Blink LED
+  if((millis()-ledStartTime)>LED_TIMEOUT) {
+    digitalWrite(LED,!ledState);
+    ledStartTime = millis();
+  }  
 
   // Read current photo values
   selectPhotoInput(LEFT);
