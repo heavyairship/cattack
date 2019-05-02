@@ -5,11 +5,6 @@
 // High-level description of behavior:
 // left photometer detects motion -> right motor turns, pauses, turns opposite direction
 // right photometer detects motion -> left motor turns, pauses, turns opposite direction
-//
-// BUGS:
-// 1. Why does left motor move variably?
-// 2. Need rolling baseline detection
-// 3. Double triggering -- bug or not?
 
 ////////////////////////////////////////
 // Configs/constants
@@ -39,11 +34,8 @@ const unsigned int PAUSE_TIME_MICRO = 1e6/4;
 // Input photo analog pin
 const unsigned int PHOTO = A0;
 
-// Number of test iterations used to compute photo baseline.
-const unsigned int PHOTO_BASELINE_ITER_MAX = 20;
-
 // Fraction of photo baseline to use as threshold.
-const float THRESHOLD_FACTOR = 0.10;
+const float THRESHOLD_FACTOR = 0.07;
 
 // Multiplexer constants
 const unsigned int MUX_A = D8;
@@ -68,10 +60,8 @@ void changeMux(int c, int b, int a) {
 // Photo state
 ////////////////////////////////////////
 
-int lPhotoBaseline = 0;
-int rPhotoBaseline = 0;
-unsigned int photoBaselineIter = 0;
-bool photoBaselineSet = false;
+int lPhotoPrev = -1;
+int rPhotoPrev = -1;
 
 ////////////////////////////////////////
 // LED state
@@ -79,6 +69,12 @@ bool photoBaselineSet = false;
 
 unsigned int ledState = LOW;
 unsigned int ledStartTime = 0;
+
+////////////////////////////////////////
+// Motor state
+////////////////////////////////////////
+
+bool movedPrevIter = false;
 
 ////////////////////////////////////////
 // Photo functions
@@ -90,30 +86,6 @@ void selectPhotoInput(unsigned int side) {
   } else {
     changeMux(LOW, LOW, HIGH);
   }
-}
-
-void updatePhotoBaseline(unsigned int lPhotoIntensity, unsigned int rPhotoIntensity) {
-  if(photoBaselineSet) {
-    return;
-  }
-  lPhotoBaseline += lPhotoIntensity;
-  rPhotoBaseline += rPhotoIntensity;
-  ++photoBaselineIter;
-  if(photoBaselineIter==PHOTO_BASELINE_ITER_MAX) {
-    lPhotoBaseline = lPhotoBaseline/photoBaselineIter;
-    rPhotoBaseline = rPhotoBaseline/photoBaselineIter;
-    Serial.print("left photo baseline set to: ");
-    Serial.print(lPhotoBaseline);
-    Serial.println();
-    Serial.print("right photo baseline set to: ");
-    Serial.print(rPhotoBaseline);
-    Serial.println();
-    photoBaselineSet = true;
-    photoBaselineIter = 0;
-  }   
-
-  // Spread out the samples over time.
-  delay(100);
 }
 
 ////////////////////////////////////////
@@ -179,15 +151,21 @@ void loop() {
   selectPhotoInput(RIGHT);
   const int rPhotoIntensity = analogRead(PHOTO);  
   
-  // Update baseline
-  updatePhotoBaseline(lPhotoIntensity, rPhotoIntensity);
-  if(!photoBaselineSet) {
+  // Read new photo values and compute % change.
+  const float lPhotoChange = lPhotoPrev == -1 ? 0 : abs(lPhotoIntensity-lPhotoPrev)/(float)lPhotoPrev;
+  const float rPhotoChange = rPhotoPrev == -1 ? 0 : abs(rPhotoIntensity-rPhotoPrev)/(float)rPhotoPrev;
+  lPhotoPrev = lPhotoIntensity;
+  rPhotoPrev = rPhotoIntensity;
+ 
+  if(movedPrevIter) {
+    // Never move two iterations in a row. 
+    // This is a bit of a hack to avoid
+    // double moves.
+    movedPrevIter = false;
     return;
   }
-  // Determine if there was motion and, if so, which direction to move
-  // in response.
-  const float lPhotoChange = abs(lPhotoIntensity-lPhotoBaseline)/(float)lPhotoBaseline;
-  const float rPhotoChange = abs(rPhotoIntensity-rPhotoBaseline)/(float)rPhotoBaseline;
+
+  // Determine motor direction
   unsigned int dir;
   MotorConfig mc;
   if(lPhotoChange>THRESHOLD_FACTOR && !(rPhotoChange>THRESHOLD_FACTOR)) {
@@ -203,9 +181,12 @@ void loop() {
     dir = rPhotoChange > lPhotoChange ? LEFT : RIGHT;
     mc = rPhotoChange > lPhotoChange ? LCONFIG : RCONFIG;
   } else {
-    // No motion detected
+    // No motion detected so return
+    movedPrevIter = false;
     return;
   }
+
+  // Log motor direction
   if(dir == LEFT) {
     Serial.print("Motion detected on right, moving left!\n");
   } else {
@@ -222,4 +203,6 @@ void loop() {
   // Spin opposite initial direction.
   spin(mc,!dir);
   turnOff(mc);
+
+  movedPrevIter = true;
 }
