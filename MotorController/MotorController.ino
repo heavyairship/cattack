@@ -26,7 +26,7 @@ const unsigned int LEFT = 0;
 const unsigned int RIGHT = 1;
 
 // Time to spin in a given direction.
-const unsigned int SPIN_TIME_MICRO = 1e6/4;
+const unsigned int SPIN_TIME_MICRO = 1e6/3;
 
 // Time to pause during a change in direction.
 const unsigned int PAUSE_TIME_MICRO = 1e6/4;
@@ -92,24 +92,31 @@ void selectPhotoInput(unsigned int side) {
 // Motor functions
 ////////////////////////////////////////
 
-void turnOff(MotorConfig mc) {
-  digitalWrite(mc.stepPin,LOW);
+void turnOffAll() {
+  digitalWrite(LCONFIG.stepPin,LOW);
+  digitalWrite(RCONFIG.stepPin,LOW);
 }
 
-void spin(MotorConfig mc, unsigned int dir) {
+void spin(MotorConfig mcPrimary, MotorConfig mcSecondary, unsigned int dir) {
+  // Spins primary fast in direction dir and secondary slow
+  // in direction opposite to dir.
+  
+  digitalWrite(mcPrimary.dirPin,dir);
+  digitalWrite(mcSecondary.dirPin,!dir);
+
   const int numIter = SPIN_TIME_MICRO/(DELAY_MICRO_LOW+DELAY_MICRO_HIGH); 
+  // Set direction.
+  
   for(int i=0; i<numIter; i++) {
-    // Set direction.
-    digitalWrite(mc.dirPin,dir);
-
-    // Run motor.
-    digitalWrite(mc.stepPin,HIGH);
+    // Run motors.+
+    digitalWrite(mcPrimary.stepPin,HIGH);
+    if(i%2==0) {
+      digitalWrite(mcSecondary.stepPin,HIGH);
+    }
     delayMicroseconds(DELAY_MICRO_HIGH);
-
-    // Rest motor.
-    digitalWrite(mc.stepPin,LOW);
+    digitalWrite(mcSecondary.stepPin,LOW);
+    digitalWrite(mcPrimary.stepPin,LOW);
     delayMicroseconds(DELAY_MICRO_LOW);
-
     // Let background activities run.
     yield();
   }
@@ -150,6 +157,11 @@ void loop() {
   const int lPhotoIntensity = analogRead(PHOTO);
   selectPhotoInput(RIGHT);
   const int rPhotoIntensity = analogRead(PHOTO);  
+  Serial.print("Left photo: ");
+  Serial.print(lPhotoIntensity);
+  Serial.print(", Right photo: ");
+  Serial.print(rPhotoIntensity);
+  Serial.println();
   
   // Read new photo values and compute % change.
   const float lPhotoChange = lPhotoPrev == -1 ? 0 : abs(lPhotoIntensity-lPhotoPrev)/(float)lPhotoPrev;
@@ -167,19 +179,23 @@ void loop() {
 
   // Determine motor direction
   unsigned int dir;
-  MotorConfig mc;
+  MotorConfig mcPrimary;
+  MotorConfig mcSecondary;
   if(lPhotoChange>THRESHOLD_FACTOR && !(rPhotoChange>THRESHOLD_FACTOR)) {
     // Motion on left only -> move direction right
     dir = RIGHT;
-    mc = RCONFIG;
+    mcPrimary = RCONFIG;
+    mcSecondary = LCONFIG;
   } else if(rPhotoChange>THRESHOLD_FACTOR && !(lPhotoChange>THRESHOLD_FACTOR)) {
     // Motion on right only -> move direction left
     dir = LEFT;
-    mc = LCONFIG;
+    mcPrimary = LCONFIG;
+    mcSecondary = RCONFIG;
   } else if(rPhotoChange>THRESHOLD_FACTOR && lPhotoChange>THRESHOLD_FACTOR) {
     // Motion on both left and right, choose opposite direction of greatest change
     dir = rPhotoChange > lPhotoChange ? LEFT : RIGHT;
-    mc = rPhotoChange > lPhotoChange ? LCONFIG : RCONFIG;
+    mcPrimary = rPhotoChange > lPhotoChange ? LCONFIG : RCONFIG;
+    mcSecondary = rPhotoChange > lPhotoChange ? RCONFIG : LCONFIG;
   } else {
     // No motion detected so return
     movedPrevIter = false;
@@ -194,15 +210,15 @@ void loop() {
   }
   
   // Spin initial direction.
-  spin(mc,dir);
-  turnOff(mc);
+  spin(mcPrimary, mcSecondary, dir);
+  turnOffAll();
 
   // Delay.
   delayMicroseconds(PAUSE_TIME_MICRO);
 
   // Spin opposite initial direction.
-  spin(mc,!dir);
-  turnOff(mc);
+  spin(mcPrimary,mcSecondary,!dir);
+  turnOffAll();
 
   movedPrevIter = true;
 }
