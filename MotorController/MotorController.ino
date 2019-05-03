@@ -100,17 +100,25 @@ void turnOffAll() {
 void spin(MotorConfig mcPrimary, MotorConfig mcSecondary, unsigned int dir) {
   // Spins primary fast in direction dir and secondary slow
   // in direction opposite to dir.
-  
+
+  // Set direction.
   digitalWrite(mcPrimary.dirPin,dir);
   digitalWrite(mcSecondary.dirPin,!dir);
 
   const int numIter = SPIN_TIME_MICRO/(DELAY_MICRO_LOW+DELAY_MICRO_HIGH); 
-  // Set direction.
+
+  int secondaryCounter = 0;
+  int secondaryCounterMax = 40;
   
   for(int i=0; i<numIter; i++) {
-    // Run motors.+
+    if(secondaryCounter == secondaryCounterMax) {
+      secondaryCounter = 0;
+    }
+    // Run motors.
     digitalWrite(mcPrimary.stepPin,HIGH);
-    if(i%2==0) {
+    if(secondaryCounter < (3*secondaryCounterMax)/4) {
+      // Runs secondary for 3/4ths the time, but
+      // in big-ish chunks.
       digitalWrite(mcSecondary.stepPin,HIGH);
     }
     delayMicroseconds(DELAY_MICRO_HIGH);
@@ -119,6 +127,7 @@ void spin(MotorConfig mcPrimary, MotorConfig mcSecondary, unsigned int dir) {
     delayMicroseconds(DELAY_MICRO_LOW);
     // Let background activities run.
     yield();
+    secondaryCounter++;
   }
 }
 
